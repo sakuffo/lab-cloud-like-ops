@@ -1,0 +1,3 @@
+[submodule "terraform-deploy"]
+	path = terraform-deploy
+	url = https://github.com/sakuffo/cloud-like-ops.git
