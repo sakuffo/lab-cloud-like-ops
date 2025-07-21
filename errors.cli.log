@@ -1,0 +1,20 @@
+
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
+
+  Enter a value: yes
+
+vsphere_virtual_machine.ubuntu_nginx: Creating...
+vsphere_virtual_machine.ubuntu_nginx: Still creating... [00m10s elapsed]
+vsphere_virtual_machine.ubuntu_nginx: Still creating... [00m20s elapsed]
+vsphere_virtual_machine.ubuntu_nginx: Still creating... [00m30s elapsed]
+╷
+│ Error: error reconfiguring virtual machine: error processing network device changes post-clone: network_interface.0: Network with ID dvs-21 not found
+│ 
+│   with vsphere_virtual_machine.ubuntu_nginx,
+│   on main.tf line 126, in resource "vsphere_virtual_machine" "ubuntu_nginx":
+│  126: resource "vsphere_virtual_machine" "ubuntu_nginx" {
+│ 
+╵
+PS /home/holuser/hol/exp-dome/cloud-like-ops> 
