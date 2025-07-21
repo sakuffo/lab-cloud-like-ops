@@ -1,15 +1,16 @@
 # Deploy-UbuntuVM.ps1
 # PowerCLI script to download Ubuntu ISO and deploy a VM on vSphere
+# -vCenterServer "vc-mgmt-a.site-a.vcf.lab" -VMName "Ubuntu-VM" -ClusterName "cluster-mgmt-01a" -DatastoreName "vsan-mgmt-01a"
 
 param(
     [Parameter(Mandatory=$true)]
-    [string]$vCenterServer,
+    [string]$vCenterServer = "vc-mgmt-a.site-a.vcf.lab",
     
     [Parameter(Mandatory=$true)]
     [string]$VMName,
     
     [Parameter(Mandatory=$false)]
-    [string]$DatastoreName = "datastore1",
+    [string]$DatastoreName = "vsan-mgmt-01a",
     
     [Parameter(Mandatory=$false)]
     [string]$ClusterName,
@@ -18,7 +19,7 @@ param(
     [string]$ESXiHost,
     
     [Parameter(Mandatory=$false)]
-    [string]$NetworkName = "VM Network",
+    [string]$NetworkName = "vmmgmt-vds01-mgmt-01a",
     
     [Parameter(Mandatory=$false)]
     [int]$MemoryGB = 4,
@@ -33,10 +34,10 @@ param(
     [string]$ISOPath = "$PSScriptRoot\ubuntu.iso",
     
     [Parameter(Mandatory=$false)]
-    [string]$UbuntuVersion = "22.04.3",
+    [string]$UbuntuVersion = "24.04.2",
     
     [Parameter(Mandatory=$false)]
-    [string]$UbuntuURL = "https://releases.ubuntu.com/$UbuntuVersion/ubuntu-$UbuntuVersion-desktop-amd64.iso"
+    [string]$UbuntuURL = "https://releases.ubuntu.com/noble/ubuntu-24.04.2-live-server-amd64.iso"
 )
 
 # Import PowerCLI module
@@ -102,11 +103,14 @@ function Upload-ISOToDatastore {
         # Upload ISO
         $fileName = Split-Path $LocalPath -Leaf
         $destinationPath = "$isoFolder\$fileName"
+        if (-not (Test-Path $isoFolder)) {
+            Write-Host "Uploading ISO to datastore: $destinationPath" -ForegroundColor Green
+            Copy-DatastoreItem -Item $LocalPath -Destination $destinationPath -Force
+            
+            Write-Host "ISO uploaded successfully!" -ForegroundColor Green
+        }
         
-        Write-Host "Uploading ISO to datastore: $destinationPath" -ForegroundColor Green
-        Copy-DatastoreItem -Item $LocalPath -Destination $destinationPath -Force
-        
-        Write-Host "ISO uploaded successfully!" -ForegroundColor Green
+
         return "[$DatastoreName] $RemotePath/$fileName"
     } catch {
         Write-Error "Failed to upload ISO to datastore: $_"
@@ -153,7 +157,7 @@ try {
                  -DiskGB $DiskGB `
                  -NetworkName $NetworkName `
                  -GuestId "ubuntu64Guest" `
-                 -Version "vmx-19"
+                 -Version "v18"
     
     # Configure VM settings
     Write-Host "Configuring VM settings..." -ForegroundColor Green
