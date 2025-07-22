@@ -69,10 +69,10 @@ fi
 
 # Build SSH command
 if [ -n "$SSH_KEY" ]; then
-    SSH_CMD="ssh -i $SSH_KEY -p $SSH_PORT -o StrictHostKeyChecking=no"
+    SSH_CMD="ssh -i $SSH_KEY -p $SSH_PORT -o StrictHostKeyChecking=no -t"
     SCP_CMD="scp -i $SSH_KEY -P $SSH_PORT -o StrictHostKeyChecking=no"
 else
-    SSH_CMD="ssh -p $SSH_PORT -o StrictHostKeyChecking=no"
+    SSH_CMD="ssh -p $SSH_PORT -o StrictHostKeyChecking=no -t"
     SCP_CMD="scp -P $SSH_PORT -o StrictHostKeyChecking=no"
 fi
 
