@@ -1,0 +1,108 @@
+---
+# install-nginx.yml
+# Ansible playbook to install and configure nginx on Ubuntu VMs
+
+- name: Install and configure nginx on Ubuntu
+  hosts: ubuntu_vms
+  become: yes
+  
+  tasks:
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        
+    - name: Start and enable nginx service
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        
+    - name: Create custom test page
+      ansible.builtin.copy:
+        dest: /var/www/html/ansible-test.html
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Nginx Installed via Ansible</title>
+              <style>
+                  body { 
+                      font-family: Arial, sans-serif; 
+                      margin: 40px; 
+                      background-color: #f0f0f0; 
+                      text-align: center;
+                  }
+                  .container { 
+                      background-color: white; 
+                      padding: 30px; 
+                      border-radius: 10px; 
+                      box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+                      max-width: 600px;
+                      margin: 0 auto;
+                  }
+                  h1 { color: #d35400; }
+                  .success { 
+                      color: #27ae60; 
+                      font-size: 24px;
+                      margin: 20px 0;
+                  }
+                  .info {
+                      background-color: #ecf0f1;
+                      padding: 15px;
+                      border-radius: 5px;
+                      margin: 20px 0;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🎯 Nginx Deployed with Ansible!</h1>
+                  <p class="success">✓ Installation automated via Ansible</p>
+                  <div class="info">
+                      <p><strong>Host:</strong> {{ ansible_hostname }}</p>
+                      <p><strong>IP:</strong> {{ ansible_default_ipv4.address }}</p>
+                      <p><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+                      <p><strong>Date:</strong> {{ ansible_date_time.iso8601 }}</p>
+                  </div>
+              </div>
+          </body>
+          </html>
+        mode: '0644'
+        
+    - name: Configure UFW to allow Nginx
+      community.general.ufw:
+        rule: allow
+        name: 'Nginx Full'
+      when: ansible_facts['os_family'] == "Debian"
+      
+    - name: Configure UFW to allow SSH
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+      when: ansible_facts['os_family'] == "Debian"
+      
+    - name: Check nginx service status
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_status
+      changed_when: false
+      
+    - name: Get nginx version
+      ansible.builtin.command: nginx -v
+      register: nginx_version
+      changed_when: false
+      
+    - name: Display installation results
+      ansible.builtin.debug:
+        msg:
+          - "Nginx installation completed!"
+          - "Service status: {{ nginx_status.stdout }}"
+          - "Version: {{ nginx_version.stderr }}"
+          - "Access the server at:"
+          - "  - http://{{ ansible_default_ipv4.address }}/"
+          - "  - http://{{ ansible_default_ipv4.address }}/ansible-test.html"
