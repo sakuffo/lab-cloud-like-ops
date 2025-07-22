@@ -66,8 +66,11 @@ if [ -z "$VM_HOST" ] || [ -z "$SSH_USER" ]; then
     usage
 fi
 
+# Create installation script in current directory
+TEMP_SCRIPT="./nginx-install-script.tmp.sh"
+
 # Create installation script
-cat > /tmp/nginx-install-script.sh << 'EOF'
+cat > "$TEMP_SCRIPT" << 'EOF'
 #!/bin/bash
 
 # Update package list
@@ -183,7 +186,7 @@ main() {
     
     # Copy installation script
     echo -e "${GREEN}Copying installation script to VM...${NC}"
-    $SCP_CMD /tmp/nginx-install-script.sh $SSH_USER@$VM_HOST:/tmp/
+    $SCP_CMD "$TEMP_SCRIPT" $SSH_USER@$VM_HOST:/tmp/nginx-install-script.sh
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to copy installation script${NC}"
@@ -229,11 +232,15 @@ main() {
     echo -e "${GREEN}=============================================================${NC}"
 }
 
-# Clean up any existing temp file
-rm -f /tmp/nginx-install-script.sh
+# Function to cleanup temp files
+cleanup() {
+    if [ -f "$TEMP_SCRIPT" ]; then
+        rm -f "$TEMP_SCRIPT"
+    fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT
 
 # Run main function
 main
-
-# Final cleanup
-rm -f /tmp/nginx-install-script.sh
