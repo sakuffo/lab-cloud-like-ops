@@ -1,0 +1,34 @@
+# Simplified version for quick deployment
+apiVersion: vmoperator.vmware.com/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: ubuntu-nginx-simple
+  namespace: default
+spec:
+  className: best-effort-small
+  imageName: ubuntu-22.04-vmservice  # Replace with your image
+  powerState: poweredOn
+  storageClass: thin-disk  # Replace with your storage class
+  networkInterfaces:
+  - networkType: vsphere-distributed
+    networkName: "VM-Network"
+  vmMetadata:
+    configMapName: nginx-simple-config
+    transport: CloudInit
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-simple-config
+  namespace: default
+data:
+  user-data: |
+    #cloud-config
+    packages: [nginx]
+    runcmd:
+    - systemctl enable nginx
+    - systemctl start nginx
+    ssh_pwauth: true
+    password: VMware1!  # Change this!
+    chpasswd:
+      expire: false
