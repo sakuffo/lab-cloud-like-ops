@@ -2,57 +2,78 @@
 # PowerCLI script to download Ubuntu ISO and deploy a VM on vSphere
 # -vCenterServer "vc-mgmt-a.site-a.vcf.lab" -VMName "Ubuntu-VM" -ClusterName "cluster-mgmt-01a" -DatastoreName "vsan-mgmt-01a"
 
+[CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
     [string]$vCenterServer = "vc-mgmt-a.site-a.vcf.lab",
     
     [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
+    [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$')]
     [string]$VMName,
     
     [Parameter(Mandatory=$false)]
+    [ValidateNotNullOrEmpty()]
     [string]$DatastoreName = "vsan-mgmt-01a",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, ParameterSetName='Cluster')]
+    [ValidateNotNullOrEmpty()]
     [string]$ClusterName,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, ParameterSetName='Host')]
+    [ValidateNotNullOrEmpty()]
     [string]$ESXiHost,
     
     [Parameter(Mandatory=$false)]
+    [ValidateNotNullOrEmpty()]
     [string]$NetworkName = "vmmgmt-vds01-mgmt-01a",
     
     [Parameter(Mandatory=$false)]
+    [ValidateRange(1, 128)]
     [int]$MemoryGB = 4,
     
     [Parameter(Mandatory=$false)]
+    [ValidateRange(1, 128)]
     [int]$NumCPU = 2,
     
     [Parameter(Mandatory=$false)]
+    [ValidateRange(1, 62000)]
     [int]$DiskGB = 20,
     
     [Parameter(Mandatory=$false)]
+    [ValidateScript({Test-Path (Split-Path $_ -Parent) -PathType Container})]
     [string]$ISOPath = "$PSScriptRoot/ubuntu.iso",
     
     [Parameter(Mandatory=$false)]
     [string]$UbuntuVersion = "24.04.2",
     
     [Parameter(Mandatory=$false)]
+    [ValidatePattern('^https?://')]
     [string]$UbuntuURL = "https://releases.ubuntu.com/noble/ubuntu-24.04.2-live-server-amd64.iso"
 )
 
 # Import PowerCLI module
 try {
     Import-Module VMware.PowerCLI -ErrorAction Stop
-    Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false | Out-Null
+    Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false -Scope User | Out-Null
+    Set-PowerCLIConfiguration -ParticipateInCEIP $false -Confirm:$false -Scope User | Out-Null
 } catch {
     Write-Error "Failed to import VMware PowerCLI module. Please install it using: Install-Module -Name VMware.PowerCLI"
     exit 1
 }
 
+# Set error action preference for better error handling
+$ErrorActionPreference = 'Stop'
+
 # Function to download Ubuntu ISO
 function Download-UbuntuISO {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$URL,
+        
+        [Parameter(Mandatory=$true)]
         [string]$OutputPath
     )
     
@@ -68,7 +89,7 @@ function Download-UbuntuISO {
         
         # Download with progress
         $ProgressPreference = 'Continue'
-        Invoke-WebRequest -Uri $URL -OutFile $OutputPath -UseBasicParsing
+        Invoke-WebRequest -Uri $URL -OutFile $OutputPath -UseBasicParsing -ErrorAction Stop
         
         Write-Host "Download completed successfully!" -ForegroundColor Green
         return $true
@@ -80,15 +101,21 @@ function Download-UbuntuISO {
 
 # Function to create or get content library
 function Get-OrCreateContentLibrary {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$LibraryName = "Ubuntu-ISO-Library",
+        
+        [Parameter(Mandatory=$true)]
         [string]$DatastoreName,
+        
+        [Parameter(Mandatory=$false)]
         [string]$Description = "Content Library for Ubuntu ISOs"
     )
     
     try {
         # Check if library already exists
-        $library = Get-ContentLibrary -Name $LibraryName -ErrorAction SilentlyContinue
+        $library = Get-ContentLibrary -Name $LibraryName -ErrorAction SilentlyContinue | Where-Object {$_.Type -eq 'LOCAL'}
         
         if ($library) {
             Write-Host "Content library '$LibraryName' already exists" -ForegroundColor Yellow
@@ -114,9 +141,17 @@ function Get-OrCreateContentLibrary {
 
 # Function to upload ISO to content library
 function Upload-ISOToContentLibrary {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({Test-Path $_ -PathType Leaf})]
         [string]$LocalPath,
+        
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNull()]
         [object]$ContentLibrary,
+        
+        [Parameter(Mandatory=$false)]
         [string]$ItemName = $null
     )
     
@@ -153,7 +188,12 @@ function Upload-ISOToContentLibrary {
 try {
     # Connect to vCenter
     Write-Host "Connecting to vCenter Server: $vCenterServer" -ForegroundColor Green
-    $connection = Connect-VIServer -Server $vCenterServer -ErrorAction Stop
+    try {
+        $connection = Connect-VIServer -Server $vCenterServer -ErrorAction Stop
+    } catch {
+        Write-Error "Failed to connect to vCenter Server: $_"
+        throw
+    }
     
     # Download Ubuntu ISO
     if (-not (Download-UbuntuISO -URL $UbuntuURL -OutputPath $ISOPath)) {
@@ -161,16 +201,36 @@ try {
     }
     
     # Get target location
-    if ($ClusterName) {
-        $vmHost = Get-Cluster -Name $ClusterName | Get-VMHost | Select-Object -First 1
-    } elseif ($ESXiHost) {
-        $vmHost = Get-VMHost -Name $ESXiHost
-    } else {
-        throw "Please specify either -ClusterName or -ESXiHost"
+    try {
+        if ($ClusterName) {
+            $cluster = Get-Cluster -Name $ClusterName -ErrorAction Stop
+            $vmHost = $cluster | Get-VMHost -ErrorAction Stop | Where-Object {$_.ConnectionState -eq 'Connected'} | Select-Object -First 1
+            if (-not $vmHost) {
+                throw "No connected hosts found in cluster '$ClusterName'"
+            }
+        } elseif ($ESXiHost) {
+            $vmHost = Get-VMHost -Name $ESXiHost -ErrorAction Stop
+            if ($vmHost.ConnectionState -ne 'Connected') {
+                throw "Host '$ESXiHost' is not in connected state"
+            }
+        } else {
+            throw "Please specify either -ClusterName or -ESXiHost"
+        }
+    } catch {
+        Write-Error "Failed to get target host: $_"
+        throw
     }
     
     # Get datastore
-    $datastore = Get-Datastore -Name $DatastoreName
+    try {
+        $datastore = Get-Datastore -Name $DatastoreName -ErrorAction Stop
+        if ($datastore.FreeSpaceGB -lt ($DiskGB + 5)) {
+            Write-Warning "Datastore '$DatastoreName' has only $($datastore.FreeSpaceGB)GB free space"
+        }
+    } catch {
+        Write-Error "Failed to get datastore '$DatastoreName': $_"
+        throw
+    }
     
     # Create or get content library
     $contentLibrary = Get-OrCreateContentLibrary -LibraryName "Ubuntu-ISO-Library" -DatastoreName $DatastoreName
@@ -185,10 +245,15 @@ try {
     }
     
     # Get the port group
-    $portGroup = Get-VDPortgroup -Name $NetworkName -ErrorAction SilentlyContinue
-    if (-not $portGroup) {
-        # Try standard port group
-        $portGroup = Get-VirtualPortGroup -Name $NetworkName -VMHost $vmHost
+    try {
+        $portGroup = Get-VDPortgroup -Name $NetworkName -ErrorAction SilentlyContinue
+        if (-not $portGroup) {
+            # Try standard port group
+            $portGroup = Get-VirtualPortGroup -Name $NetworkName -VMHost $vmHost -ErrorAction Stop
+        }
+    } catch {
+        Write-Error "Failed to get network port group '$NetworkName': $_"
+        throw
     }
     
     # Create VM
@@ -207,8 +272,11 @@ try {
     Write-Host "Configuring VM settings..." -ForegroundColor Green
     
     # Add CD/DVD drive and mount ISO from content library
-    # Mount the ISO from content library
-    $cd = New-CDDrive -VM $vm -ContentLibraryIso $libraryItem -StartConnected
+    # Mount the ISO from content library (Note: StartConnected not available with ContentLibraryIso)
+    $cd = New-CDDrive -VM $vm -ContentLibraryIso $libraryItem
+    
+    # Connect the CD drive
+    Set-CDDrive -CD $cd -Connected $true -Confirm:$false | Out-Null
     
     # Set boot order to CD first
     $spec = New-Object VMware.Vim.VirtualMachineConfigSpec
@@ -227,12 +295,16 @@ try {
     # Apply configuration
     $vm.ExtensionData.ReconfigVM($spec)
     
-    # Enable UEFI if needed for newer Ubuntu versions
-    Set-VM -VM $vm -GuestId "ubuntu64Guest" -Confirm:$false | Out-Null
+    # The GuestId is already set during VM creation, no need to set it again
     
     # Power on VM
     Write-Host "Powering on VM..." -ForegroundColor Green
-    Start-VM -VM $vm -Confirm:$false | Out-Null
+    try {
+        Start-VM -VM $vm -Confirm:$false -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Warning "Failed to power on VM: $_"
+        Write-Host "VM created successfully but not powered on. You can power it on manually." -ForegroundColor Yellow
+    }
     
     Write-Host "`nVM deployment completed successfully!" -ForegroundColor Green
     Write-Host "VM Name: $VMName" -ForegroundColor Cyan
@@ -251,6 +323,6 @@ try {
 } finally {
     # Disconnect from vCenter
     if ($connection) {
-        Disconnect-VIServer -Server $vCenterServer -Confirm:$false
+        Disconnect-VIServer -Server $vCenterServer -Confirm:$false -ErrorAction SilentlyContinue
     }
 }
