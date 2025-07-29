@@ -101,7 +101,8 @@ function Get-OrCreateContentLibrary {
         
         $library = New-ContentLibrary -Name $LibraryName `
                                     -Datastore $datastore `
-                                    -Description $Description 
+                                    -Description $Description `
+                                    -Type Local 
         
         Write-Host "Content library created successfully!" -ForegroundColor Green
         return $library
@@ -183,6 +184,13 @@ try {
         throw "Failed to upload ISO to content library"
     }
     
+    # Get the port group
+    $portGroup = Get-VDPortgroup -Name $NetworkName -ErrorAction SilentlyContinue
+    if (-not $portGroup) {
+        # Try standard port group
+        $portGroup = Get-VirtualPortGroup -Name $NetworkName -VMHost $vmHost
+    }
+    
     # Create VM
     Write-Host "Creating VM: $VMName" -ForegroundColor Green
     $vm = New-VM -Name $VMName `
@@ -191,22 +199,14 @@ try {
                  -NumCpu $NumCPU `
                  -MemoryGB $MemoryGB `
                  -DiskGB $DiskGB `
-                 -NetworkName $NetworkName `
+                 -Portgroup $portGroup `
                  -GuestId "ubuntu64Guest" `
-                 -Version "v18"
+                 -HardwareVersion "vmx-18"
     
     # Configure VM settings
     Write-Host "Configuring VM settings..." -ForegroundColor Green
     
     # Add CD/DVD drive and mount ISO from content library
-    # First, we need to get the ISO file from the content library item
-    $isoFiles = $libraryItem | Get-ContentLibraryItemFile
-    $isoFile = $isoFiles | Where-Object {$_.Name -like "*.iso"} | Select-Object -First 1
-    
-    if (-not $isoFile) {
-        throw "No ISO file found in content library item"
-    }
-    
     # Mount the ISO from content library
     $cd = New-CDDrive -VM $vm -ContentLibraryIso $libraryItem -StartConnected
     
