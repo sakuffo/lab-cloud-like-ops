@@ -272,13 +272,12 @@ try {
     Write-Host "Configuring VM settings..." -ForegroundColor Green
     
     # Add CD/DVD drive and mount ISO from content library
-    # Mount the ISO from content library (Note: StartConnected not available with ContentLibraryIso)
+    # Mount the ISO from content library
+    Write-Host "Adding CD/DVD drive with Ubuntu ISO..." -ForegroundColor Green
     $cd = New-CDDrive -VM $vm -ContentLibraryIso $libraryItem
     
-    # Connect the CD drive
-    Set-CDDrive -CD $cd -Connected $true -Confirm:$false | Out-Null
-    
-    # Set boot order to CD first
+    # Set boot order to CD first (must be done before power on)
+    Write-Host "Setting boot order to CD-ROM first..." -ForegroundColor Green
     $spec = New-Object VMware.Vim.VirtualMachineConfigSpec
     $spec.BootOptions = New-Object VMware.Vim.VirtualMachineBootOptions
     $spec.BootOptions.BootOrder = New-Object VMware.Vim.VirtualMachineBootOptionsBootableDevice[] (2)
@@ -291,6 +290,16 @@ try {
     $diskBoot = New-Object VMware.Vim.VirtualMachineBootOptionsBootableDiskDevice
     $diskBoot.DeviceKey = ($vm | Get-HardDisk).ExtensionData.Key
     $spec.BootOptions.BootOrder[1] = $diskBoot
+    
+    # Also ensure CD is set to connect at power on
+    $spec.DeviceChange = New-Object VMware.Vim.VirtualDeviceConfigSpec[] (1)
+    $spec.DeviceChange[0] = New-Object VMware.Vim.VirtualDeviceConfigSpec
+    $spec.DeviceChange[0].Device = $cd.ExtensionData
+    $spec.DeviceChange[0].Device.Connectable = New-Object VMware.Vim.VirtualDeviceConnectInfo
+    $spec.DeviceChange[0].Device.Connectable.Connected = $true
+    $spec.DeviceChange[0].Device.Connectable.StartConnected = $true
+    $spec.DeviceChange[0].Device.Connectable.AllowGuestControl = $true
+    $spec.DeviceChange[0].Operation = [VMware.Vim.VirtualDeviceConfigSpecOperation]::edit
     
     # Apply configuration
     $vm.ExtensionData.ReconfigVM($spec)
