@@ -31,7 +31,7 @@ param(
     [int]$DiskGB = 20,
     
     [Parameter(Mandatory=$false)]
-    [string]$ISOPath = "$PSScriptRoot\ubuntu.iso",
+    [string]$ISOPath = "$PSScriptRoot/ubuntu.iso",
     
     [Parameter(Mandatory=$false)]
     [string]$UbuntuVersion = "24.04.2",
@@ -101,8 +101,7 @@ function Get-OrCreateContentLibrary {
         
         $library = New-ContentLibrary -Name $LibraryName `
                                     -Datastore $datastore `
-                                    -Description $Description `
-                                    -LocalLibrary
+                                    -Description $Description 
         
         Write-Host "Content library created successfully!" -ForegroundColor Green
         return $library
