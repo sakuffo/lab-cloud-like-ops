@@ -1,0 +1,154 @@
+apiVersion: vmoperator.vmware.com/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: ubuntu-nginx-vm
+  namespace: default  # Change to your namespace
+  labels:
+    app: nginx
+    environment: production
+  annotations:
+    # Required for custom images not from VMware Marketplace
+    vmoperator.vmware.com/image-supported-check: disable
+spec:
+  # VM Class defines CPU and memory resources
+  # Common options: best-effort-small, best-effort-medium, best-effort-large
+  # Or guaranteed-small, guaranteed-medium, guaranteed-large
+  className: best-effort-medium  # 2 vCPU, 4GB RAM
+  
+  # Image name from Content Library
+  # Use 'kubectl get virtualmachineimages' to list available images
+  imageName: ubuntu-22.04-vmservice  # Replace with your actual image name/ID
+  
+  # Power state
+  powerState: poweredOn
+  
+  # Storage policy
+  storageClass: vsphere-storage-policy  # Replace with your storage policy
+  
+  # Network configuration
+  networkInterfaces:
+  - networkType: vsphere-distributed  # or 'nsx-t' if using NSX
+    networkName: "VM-Network"  # Replace with your network name
+  
+  # VM customization via Cloud-Init
+  vmMetadata:
+    configMapName: ubuntu-nginx-cloudinit
+    transport: CloudInit  # or 'OvfEnv' for older images
+  
+  # Optional: Readiness probe
+  readinessProbe:
+    tcpSocket:
+      port: 80
+    initialDelaySeconds: 120
+    periodSeconds: 10
+    
+---
+# Cloud-Init configuration for VM customization
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ubuntu-nginx-cloudinit
+  namespace: default  # Must match VM namespace
+data:
+  user-data: |
+    #cloud-config
+    hostname: ubuntu-nginx-vm
+    
+    # Create default user
+    users:
+    - name: ubuntu
+      groups: sudo
+      shell: /bin/bash
+      sudo: ['ALL=(ALL) NOPASSWD:ALL']
+      ssh-authorized-keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... # Add your SSH public key here
+    
+    # Update system
+    package_update: true
+    package_upgrade: true
+    
+    # Install packages
+    packages:
+    - nginx
+    - curl
+    - vim
+    - htop
+    
+    # Configure firewall
+    runcmd:
+    - ufw allow 22/tcp
+    - ufw allow 80/tcp
+    - ufw allow 443/tcp
+    - ufw --force enable
+    
+    # Enable and start nginx
+    - systemctl enable nginx
+    - systemctl start nginx
+    
+    # Create custom index page
+    - |
+      cat > /var/www/html/index.html << EOF
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Welcome to nginx on vSphere VM Service!</title>
+      </head>
+      <body>
+          <h1>Success! nginx is running on VM Service</h1>
+          <p>This VM was deployed using Kubernetes-style YAML on vSphere.</p>
+          <p>Hostname: $(hostname)</p>
+          <p>IP Address: $(hostname -I | awk '{print $1}')</p>
+      </body>
+      </html>
+      EOF
+    
+    # Optional: Configure nginx (example)
+    write_files:
+    - path: /etc/nginx/sites-available/default
+      content: |
+        server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            
+            root /var/www/html;
+            index index.html index.htm index.nginx-debian.html;
+            
+            server_name _;
+            
+            location / {
+                try_files $uri $uri/ =404;
+            }
+            
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    
+    # Set timezone
+    timezone: America/New_York  # Change to your timezone
+    
+    # Final message
+    final_message: "The system is ready after $UPTIME seconds"
+
+---
+# Optional: Service to expose the VM (if using LoadBalancer)
+apiVersion: vmoperator.vmware.com/v1alpha1
+kind: VirtualMachineService
+metadata:
+  name: nginx-service
+  namespace: default
+spec:
+  selector:
+    app: nginx
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80
+  - name: https
+    protocol: TCP
+    port: 443
+    targetPort: 443
+  type: LoadBalancer  # or ClusterIP

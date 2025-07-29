@@ -1,0 +1,11 @@
+vsphere_user     = "administrator@vsphere.local"
+vsphere_password = "VMware123!VMware123!"
+vsphere_server   = "vc-mgmt-a.site-a.vcf.lab"
+datacenter       = "dc-a"
+cluster          = "cluster-mgmt-01a"
+datastore        = "vsan-mgmt-01a"
+network          = "vds01-mgmt-01a"
+vm_template      = "Ubuntu-VM"
+ssh_username     = "ubuntu"
+ssh_password     = "VMware123!"
+vm_count         = 3
