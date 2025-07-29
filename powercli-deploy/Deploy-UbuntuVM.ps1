@@ -78,42 +78,73 @@ function Download-UbuntuISO {
     }
 }
 
-# Function to upload ISO to datastore
-function Upload-ISOToDatastore {
+# Function to create or get content library
+function Get-OrCreateContentLibrary {
     param(
-        [string]$LocalPath,
+        [string]$LibraryName = "Ubuntu-ISO-Library",
         [string]$DatastoreName,
-        [string]$RemotePath = "ISO"
+        [string]$Description = "Content Library for Ubuntu ISOs"
     )
     
     try {
+        # Check if library already exists
+        $library = Get-ContentLibrary -Name $LibraryName -ErrorAction SilentlyContinue
+        
+        if ($library) {
+            Write-Host "Content library '$LibraryName' already exists" -ForegroundColor Yellow
+            return $library
+        }
+        
+        # Create new content library
+        Write-Host "Creating content library: $LibraryName" -ForegroundColor Green
         $datastore = Get-Datastore -Name $DatastoreName
-        $datastoreDrive = Get-PSDrive | Where-Object {$_.Provider.Name -eq "VimDatastore" -and $_.Root -like "*$DatastoreName*"}
         
-        if (-not $datastoreDrive) {
-            $datastoreDrive = New-PSDrive -Name "ds" -PSProvider VimDatastore -Root "\" -Datastore $datastore
-        }
+        $library = New-ContentLibrary -Name $LibraryName `
+                                    -Datastore $datastore `
+                                    -Description $Description `
+                                    -Local
         
-        # Create ISO folder if it doesn't exist
-        $isoFolder = "$($datastoreDrive.Name):\$RemotePath"
-        if (-not (Test-Path $isoFolder)) {
-            New-Item -Path $isoFolder -ItemType Directory | Out-Null
-        }
-        
-        # Upload ISO
-        $fileName = Split-Path $LocalPath -Leaf
-        $destinationPath = "$isoFolder\$fileName"
-        if (-not (Test-Path $isoFolder)) {
-            Write-Host "Uploading ISO to datastore: $destinationPath" -ForegroundColor Green
-            Copy-DatastoreItem -Item $LocalPath -Destination $destinationPath -Force
-            
-            Write-Host "ISO uploaded successfully!" -ForegroundColor Green
-        }
-        
-
-        return "[$DatastoreName] $RemotePath/$fileName"
+        Write-Host "Content library created successfully!" -ForegroundColor Green
+        return $library
     } catch {
-        Write-Error "Failed to upload ISO to datastore: $_"
+        Write-Error "Failed to create content library: $_"
+        return $null
+    }
+}
+
+# Function to upload ISO to content library
+function Upload-ISOToContentLibrary {
+    param(
+        [string]$LocalPath,
+        [object]$ContentLibrary,
+        [string]$ItemName = $null
+    )
+    
+    try {
+        if (-not $ItemName) {
+            $ItemName = [System.IO.Path]::GetFileNameWithoutExtension($LocalPath)
+        }
+        
+        # Check if item already exists
+        $existingItem = Get-ContentLibraryItem -ContentLibrary $ContentLibrary -Name $ItemName -ErrorAction SilentlyContinue
+        
+        if ($existingItem) {
+            Write-Host "Content library item '$ItemName' already exists. Skipping upload." -ForegroundColor Yellow
+            return $existingItem
+        }
+        
+        Write-Host "Uploading ISO to content library as: $ItemName" -ForegroundColor Green
+        
+        # Create library item
+        $libraryItem = New-ContentLibraryItem -ContentLibrary $ContentLibrary `
+                                             -Name $ItemName `
+                                             -ItemType "iso" `
+                                             -Files @($LocalPath)
+        
+        Write-Host "ISO uploaded to content library successfully!" -ForegroundColor Green
+        return $libraryItem
+    } catch {
+        Write-Error "Failed to upload ISO to content library: $_"
         return $null
     }
 }
@@ -141,10 +172,16 @@ try {
     # Get datastore
     $datastore = Get-Datastore -Name $DatastoreName
     
-    # Upload ISO to datastore
-    $datastoreISOPath = Upload-ISOToDatastore -LocalPath $ISOPath -DatastoreName $DatastoreName
-    if (-not $datastoreISOPath) {
-        throw "Failed to upload ISO to datastore"
+    # Create or get content library
+    $contentLibrary = Get-OrCreateContentLibrary -LibraryName "Ubuntu-ISO-Library" -DatastoreName $DatastoreName
+    if (-not $contentLibrary) {
+        throw "Failed to create or get content library"
+    }
+    
+    # Upload ISO to content library
+    $libraryItem = Upload-ISOToContentLibrary -LocalPath $ISOPath -ContentLibrary $contentLibrary
+    if (-not $libraryItem) {
+        throw "Failed to upload ISO to content library"
     }
     
     # Create VM
@@ -162,8 +199,17 @@ try {
     # Configure VM settings
     Write-Host "Configuring VM settings..." -ForegroundColor Green
     
-    # Add CD/DVD drive and mount ISO
-    $cd = New-CDDrive -VM $vm -IsoPath $datastoreISOPath -StartConnected
+    # Add CD/DVD drive and mount ISO from content library
+    # First, we need to get the ISO file from the content library item
+    $isoFiles = $libraryItem | Get-ContentLibraryItemFile
+    $isoFile = $isoFiles | Where-Object {$_.Name -like "*.iso"} | Select-Object -First 1
+    
+    if (-not $isoFile) {
+        throw "No ISO file found in content library item"
+    }
+    
+    # Mount the ISO from content library
+    $cd = New-CDDrive -VM $vm -ContentLibraryIso $libraryItem -StartConnected
     
     # Set boot order to CD first
     $spec = New-Object VMware.Vim.VirtualMachineConfigSpec
@@ -195,7 +241,8 @@ try {
     Write-Host "Memory: $($MemoryGB)GB" -ForegroundColor Cyan
     Write-Host "Disk: $($DiskGB)GB" -ForegroundColor Cyan
     Write-Host "Network: $NetworkName" -ForegroundColor Cyan
-    Write-Host "ISO: $datastoreISOPath" -ForegroundColor Cyan
+    Write-Host "ISO: $($libraryItem.Name) (Content Library)" -ForegroundColor Cyan
+    Write-Host "Content Library: $($contentLibrary.Name)" -ForegroundColor Cyan
     Write-Host "`nThe VM is now powered on and should boot from the Ubuntu ISO." -ForegroundColor Yellow
     Write-Host "Please complete the Ubuntu installation manually through the VM console." -ForegroundColor Yellow
     
