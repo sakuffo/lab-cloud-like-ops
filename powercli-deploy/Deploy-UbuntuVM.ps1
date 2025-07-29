@@ -102,7 +102,7 @@ function Get-OrCreateContentLibrary {
         $library = New-ContentLibrary -Name $LibraryName `
                                     -Datastore $datastore `
                                     -Description $Description `
-                                    -Local
+                                    -LocalLibrary
         
         Write-Host "Content library created successfully!" -ForegroundColor Green
         return $library
