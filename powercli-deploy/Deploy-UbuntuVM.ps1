@@ -11,21 +11,21 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidateNotNullOrEmpty()]
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$')]
-    [string]$VMName,
+    [string]$VMName="Ubuntu-VM",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$true)]
     [ValidateNotNullOrEmpty()]
     [string]$DatastoreName = "vsan-mgmt-01a",
     
-    [Parameter(Mandatory=$false, ParameterSetName='Cluster')]
+    [Parameter(Mandatory=$true, ParameterSetName='Cluster')]
     [ValidateNotNullOrEmpty()]
-    [string]$ClusterName,
+    [string]$ClusterName="cluster-mgmt-01a",
     
     [Parameter(Mandatory=$false, ParameterSetName='Host')]
     [ValidateNotNullOrEmpty()]
     [string]$ESXiHost,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$true)]
     [ValidateNotNullOrEmpty()]
     [string]$NetworkName = "vmmgmt-vds01-mgmt-01a",
     
