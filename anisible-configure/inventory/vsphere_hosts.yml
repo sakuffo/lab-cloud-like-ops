@@ -1,0 +1,25 @@
+---
+# Ansible inventory for vSphere VMs
+# This inventory file defines the target VMs for nginx installation
+
+all:
+  children:
+    vsphere_vms:
+      hosts:
+        # Add your vSphere VM hosts here
+        # Example entries:
+        # vm1:
+        #   ansible_host: 192.168.1.100
+        #   ansible_user: ubuntu
+        #   ansible_ssh_private_key_file: ~/.ssh/id_rsa  # Optional
+        #   ansible_port: 22  # Optional, defaults to 22
+        # vm2:
+        #   ansible_host: 192.168.1.101
+        #   ansible_user: ubuntu
+        #   ansible_ssh_pass: password  # Not recommended, use SSH keys
+      
+      vars:
+        # Common variables for all vSphere VMs
+        ansible_connection: ssh
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3

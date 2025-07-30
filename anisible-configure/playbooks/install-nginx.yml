@@ -1,0 +1,104 @@
+---
+# Ansible playbook to install and configure nginx on vSphere VMs
+# This playbook replicates the functionality of install-nginx-simple.sh
+
+- name: Install and Configure Nginx on vSphere VMs
+  hosts: vsphere_vms
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    nginx_test_page_content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Nginx on {{ inventory_hostname }}</title>
+          <style>
+              body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+              .success { color: #28a745; }
+          </style>
+      </head>
+      <body>
+          <h1 class="success">Nginx Successfully Installed!</h1>
+          <p>Installation completed on {{ ansible_date_time.date }} at {{ ansible_date_time.time }}</p>
+          <p>Hostname: {{ ansible_hostname }}</p>
+          <p>IP Address: {{ ansible_default_ipv4.address | default('N/A') }}</p>
+      </body>
+      </html>
+
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        force_apt_get: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: ansible_os_family == "Debian"
+
+    - name: Start nginx service
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Check if UFW is installed
+      command: which ufw
+      register: ufw_check
+      failed_when: false
+      changed_when: false
+
+    - name: Configure UFW for Nginx Full
+      ufw:
+        rule: allow
+        name: 'Nginx Full'
+      when: ufw_check.rc == 0
+
+    - name: Configure UFW for OpenSSH
+      ufw:
+        rule: allow
+        name: 'OpenSSH'
+      when: ufw_check.rc == 0
+
+    - name: Create test page
+      copy:
+        content: "{{ nginx_test_page_content }}"
+        dest: /var/www/html/test.html
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Get nginx version
+      command: nginx -v
+      register: nginx_version
+      changed_when: false
+
+    - name: Check nginx service status
+      systemd:
+        name: nginx
+      register: nginx_status
+
+    - name: Display installation summary
+      debug:
+        msg:
+          - "==================== Installation Complete ===================="
+          - "Nginx has been successfully installed!"
+          - "Nginx version: {{ nginx_version.stderr }}"
+          - "Service status: {{ nginx_status.status.ActiveState }}"
+          - "You can access nginx at:"
+          - "  http://{{ ansible_default_ipv4.address | default(ansible_host) }}/"
+          - "  http://{{ ansible_default_ipv4.address | default(ansible_host) }}/test.html"
+          - "============================================================="
+
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
