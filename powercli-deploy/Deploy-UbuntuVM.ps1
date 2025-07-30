@@ -19,7 +19,7 @@ param(
     
     [Parameter(Mandatory=$true, ParameterSetName='Cluster')]
     [ValidateNotNullOrEmpty()]
-    [string]$ClusterName="cluster-mgmt-01a",
+    [string]$ClusterName,
     
     [Parameter(Mandatory=$false, ParameterSetName='Host')]
     [ValidateNotNullOrEmpty()]
@@ -27,7 +27,7 @@ param(
     
     [Parameter(Mandatory=$true)]
     [ValidateNotNullOrEmpty()]
-    [string]$NetworkName = "vmmgmt-vds01-mgmt-01a",
+    [string]$NetworkName,
     
     [Parameter(Mandatory=$false)]
     [ValidateRange(1, 128)]
@@ -128,8 +128,7 @@ function Get-OrCreateContentLibrary {
         
         $library = New-ContentLibrary -Name $LibraryName `
                                     -Datastore $datastore `
-                                    -Description $Description `
-                                    -Type Local 
+                                    -Description $Description
         
         Write-Host "Content library created successfully!" -ForegroundColor Green
         return $library
