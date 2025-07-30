@@ -7,7 +7,6 @@
 4. Login to gh
 5. Clone the repository
 
-
 #### Deploying the VM manually
 1. Deploy the VM using the script to grab the ISO, create the content library and deploy the VM
 2. Install Ubuntu Server on the auto build VM
